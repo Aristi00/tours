@@ -39,7 +39,7 @@ input,textarea,select{font:inherit;width:100%;padding:8px;border:1px solid var(-
 </style></head><body><div id="app"></div>
 <input id="fi" type="file" accept="image/*" capture="environment" style="position:fixed;left:-9999px;opacity:0">
 <div id="tour" hidden><button id="x">✕</button><div id="bar"></div></div>
-<script>window.SB_URL='https://nvkutiwrpwpvtjdgwusd.supabase.co';window.SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52a3V0aXdycHdwdnRqZGd3dXNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMjU2MjIsImV4cCI6MjEwNjkwMTYyMn0.5qsnphNLP81burxH9tTfKJSu00gNegUb5Ipd34S89Fs';/* ← pega aquí tus datos de Supabase */</script>
+<script>window.NO_LOGIN=true;window.ADMIN_PIN='';/* clave opcional del panel: ej. '1234' */window.SB_URL='https://nvkutiwrpwpvtjdgwusd.supabase.co';window.SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52a3V0aXdycHdwdnRqZGd3dXNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMjU2MjIsImV4cCI6MjEwNjkwMTYyMn0.5qsnphNLP81burxH9tTfKJSu00gNegUb5Ipd34S89Fs';/* ← pega aquí tus datos de Supabase */</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -62,11 +62,12 @@ async function init(){
  await setup();
  const v=location.hash.match(/#v=(\w+)/);
  if(v){await viewer(v[1]);return}
- if(sb){const {data:{session}}=await sb.auth.getSession();if(!session){login();return}}
+ if(window.ADMIN_PIN){let ok=false;try{ok=localStorage.getItem('pin')===ADMIN_PIN}catch(e){}if(!ok){const p=prompt('Clave de acceso');if(p!==ADMIN_PIN){app.innerHTML='<h1>Acceso restringido</h1>';return}try{localStorage.setItem('pin',p)}catch(e){}}}
+ if(sb&&!window.NO_LOGIN){const {data:{session}}=await sb.auth.getSession();if(!session){login();return}}
  unsub=db.collection('props').onSnapshot(s=>{props=s.docs.map(d=>({id:d.id,...d.data()}));if(!cur)home()},e=>{app.textContent='Error: '+(e.message||e.code)});
 }
 function home(){cur=null;
- app.innerHTML='<h1>🏡 Mis propiedades</h1><div class="row"><button class="p" id="n">＋ Nueva propiedad</button>'+(sb?'<button id="lo">Salir</button>':'')+'</div>'+
+ app.innerHTML='<h1>🏡 Mis propiedades</h1><div class="row"><button class="p" id="n">＋ Nueva propiedad</button>'+(sb&&!window.NO_LOGIN?'<button id="lo">Salir</button>':'')+'</div>'+
  (props.length?props.map(p=>`<div class="card"><b>${E(p.name)||'Sin nombre'}</b><div class="muted">${(p.zones||[]).length} zonas</div><div class="row" style="margin-top:8px"><button data-e="${p.id}">Editar</button><button data-l="${p.id}">Copiar enlace cliente</button><button data-v="${p.id}">Ver</button></div></div>`).join(''):'<p class="muted">Aún no hay propiedades. Crea la primera.</p>');
  {const lo=$('#lo');if(lo)lo.onclick=async()=>{await sb.auth.signOut();location.reload()}}$('#n').onclick=()=>edit({id:uid(),name:'',desc:'',fov:65,zones:[]});
  app.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>edit(JSON.parse(JSON.stringify(props.find(p=>p.id==b.dataset.e)))));
@@ -129,10 +130,10 @@ function loop(){raf=requestAnimationFrame(loop);const a=lon*Math.PI/180,b=lat*Ma
  cam.fov=fov;cam.updateProjectionMatrix();cam.lookAt(Math.sin(a)*Math.cos(b),Math.sin(b),-Math.cos(a)*Math.cos(b));R.render(sc,cam)}
 async function setup(){
  if(!(window.SB_URL&&window.SB_KEY&&window.supabase)){db=LDB;assets=LAS;await preload();return}
- sb=supabase.createClient(SB_URL,SB_KEY);BU=id=>id?SB_URL+'/storage/v1/object/public/tours/'+id:'';
+ sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:false,autoRefreshToken:false}});BU=id=>id?SB_URL+'/storage/v1/object/public/tours/'+id:'';
  const note=async()=>{const {data}=await sb.from('properties').select('id,data');subs.forEach(f=>f({docs:(data||[]).map(r=>({id:r.id,exists:true,data:()=>r.data}))}))};
  db={collection:()=>({onSnapshot:f=>{subs.push(f);note()},doc:id=>({get:async()=>{const {data}=await sb.rpc('get_property',{pid:id});return{exists:!!data,data:()=>data}},set:async d=>{const {error}=await sb.from('properties').upsert({id,data:JSON.parse(JSON.stringify(d))});if(error)throw error;note()},delete:async()=>{await sb.from('properties').delete().eq('id',id);note()}})})};
- assets={upload:async b=>{const {data:{session}}=await sb.auth.getSession(),id=session.user.id+'/'+Math.random().toString(36).slice(2)+Date.now().toString(36)+'.jpg',{error}=await sb.storage.from('tours').upload(id,b,{contentType:'image/jpeg'});if(error)throw error;return{id,url:BU(id)}}};
+ assets={upload:async b=>{const {data:{session}}=await sb.auth.getSession(),id=(session?session.user.id:'pub')+'/'+Math.random().toString(36).slice(2)+Date.now().toString(36)+'.jpg',{error}=await sb.storage.from('tours').upload(id,b,{contentType:'image/jpeg'});if(error)throw error;return{id,url:BU(id)}}};
 }
 function login(){app.innerHTML='<h1>🏡 Entrar</h1><input id="em" type="email" placeholder="Correo"><input id="pw" type="password" placeholder="Contraseña (mínimo 6)"><div class="row"><button class="p" id="in">Entrar</button><button id="up">Crear cuenta</button></div><p class="muted" id="er"></p>';
  const go=async f=>{const {error,data}=await sb.auth[f]({email:$('#em').value,password:$('#pw').value});if(error){$('#er').textContent=error.message;return}if(!data.session){$('#er').textContent='Revisa tu correo para confirmar la cuenta y luego entra.';return}location.reload()};
