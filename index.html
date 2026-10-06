@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tours inmobiliarios</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏡</text></svg>">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fafaf8;--fg:#1c1c1a;--card:#fff;--bd:#dcdad2;--ac:#0f6e56}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--fg:#eee;--card:#222220;--bd:#3a3a37;--ac:#3ec99f}}
+:root[data-theme="dark"]{--bg:#161615;--fg:#eee;--card:#222220;--bd:#3a3a37;--ac:#3ec99f}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif}
+#app{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:16px;margin:16px 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+button{font:inherit;border:1px solid var(--ac);background:transparent;color:var(--ac);border-radius:8px;padding:8px 12px;cursor:pointer}
+button.p{background:var(--ac);color:#fff}button.d{border-color:#c33;color:#c33}
+input,textarea{font:inherit;width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);margin:4px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.thumbs{display:flex;gap:6px;margin:8px 0;overflow-x:auto}.thumbs i{width:54px;height:54px;border-radius:8px;border:2px solid #ff8a1f;background-size:cover;flex:none;animation:fi .3s both}
+#app>*{animation:fi .35s both}button{transition:transform .12s}button:active{transform:scale(.95)}.card{transition:transform .15s,box-shadow .15s}.card:hover{transform:translateY(-2px);box-shadow:0 4px 14px #0002}
+#tour canvas{transition:opacity .45s}#tour{animation:fi .3s}
+#cam{position:fixed;inset:0;z-index:10;background:#000;animation:fi .3s}
+#cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#ret{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px;border:3px solid #fff;border-radius:50%;transition:.2s}
+#ret.ok{border-color:#3ec99f;transform:scale(1.25)}
+.dt{position:absolute;width:56px;height:56px;margin:-28px;border-radius:50%;border:3px solid #fff8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;transition:left .1s linear,top .1s linear}
+.dt.done{background:#ff8a1f;border-color:#ff8a1f}.dt.nx{border-color:#fff;width:84px;height:84px;margin:-42px;animation:pu 1s infinite}
+#msg{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:12px;right:12px;text-align:center;color:#fff;background:#0009;padding:8px;border-radius:10px;font-size:14px}
+#cb{position:absolute;left:0;right:0;bottom:0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center}
+#cb button{background:#0009;color:#fff;border-color:#fff6}#sh{width:68px;height:68px;border-radius:50%;border:4px solid #fff!important;background:#fff4!important}
+@keyframes fi{from{opacity:0;transform:scale(.98)}to{opacity:1}}@keyframes pu{50%{transform:scale(1.15)}}
+.muted{opacity:.7;font-size:13px}
+#tour{position:fixed;inset:0;background:#000;z-index:5;touch-action:none}
+#tour canvas{display:block}
+#bar{position:absolute;left:0;right:0;bottom:0;padding:10px 10px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;overflow-x:auto;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+#bar button{background:rgba(255,255,255,.18);color:#fff;border-color:#fff6;white-space:nowrap}
+#bar button.on{background:#fff;color:#000}
+#x{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:10px;background:rgba(0,0,0,.6);color:#fff;border-color:#fff6}
+</style></head><body><div id="app"></div>
+<input id="fi" type="file" accept="image/*" capture="environment" style="position:fixed;left:-9999px;opacity:0">
+<div id="tour" hidden><button id="x">✕</button><div id="bar"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+const IDB=new Promise((ok,no)=>{const r=indexedDB.open('tours',1);r.onupgradeneeded=()=>{r.result.createObjectStore('props');r.result.createObjectStore('blobs')};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const tx=(st,m,f)=>IDB.then(d=>new Promise((ok,no)=>{const q=f(d.transaction(st,m).objectStore(st));q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error)}));
+const URLS={},BU=id=>URLS[id]||'',subs=[];
+const notify=async()=>{const ks=await tx('props','readonly',x=>x.getAllKeys()),vs=await tx('props','readonly',x=>x.getAll());const docs=ks.map((k,i)=>({id:k,exists:true,data:()=>vs[i]}));subs.forEach(f=>f({docs}))};
+const db={collection:()=>({onSnapshot:f=>{subs.push(f);notify()},doc:id=>({get:async()=>{const v=await tx('props','readonly',x=>x.get(id));return{exists:!!v,data:()=>v}},set:async d=>{await tx('props','readwrite',x=>x.put(JSON.parse(JSON.stringify(d)),id));notify()},delete:async()=>{await tx('props','readwrite',x=>x.delete(id));notify()}})})};
+const assets={upload:async b=>{const id=Math.random().toString(36).slice(2)+Date.now().toString(36);await tx('blobs','readwrite',x=>x.put(b,id));URLS[id]=URL.createObjectURL(b);return{id,url:URLS[id]}}};
+async function preload(){const ks=await tx('blobs','readonly',x=>x.getAllKeys()),vs=await tx('blobs','readonly',x=>x.getAll());ks.forEach((k,i)=>URLS[k]=URL.createObjectURL(vs[i]))}
+
+let props=[],cur=null,unsub=null;
+const FACES=['Frente','Derecha','Atrás','Izquierda','Arriba (techo)','Abajo (piso)'];
+const uid=()=>Math.random().toString(36).slice(2,9);
+const E=t=>String(t||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const link=id=>location.href.split('#')[0]+'#v='+id;
+
+async function init(){
+ await preload();
+ const v=location.hash.match(/#v=(\w+)/);
+ if(v){await viewer(v[1]);return}
+ if(!db){app.innerHTML='<h1>Inicia sesión para usar el panel</h1>';return}
+ unsub=db.collection('props').onSnapshot(s=>{props=s.docs.map(d=>({id:d.id,...d.data()}));if(!cur)home()},e=>{app.textContent='Error: '+(e.message||e.code)});
+}
+function home(){cur=null;
+ app.innerHTML='<h1>🏡 Mis propiedades</h1><button class="p" id="n">＋ Nueva propiedad</button>'+
+ (props.length?props.map(p=>`<div class="card"><b>${E(p.name)||'Sin nombre'}</b><div class="muted">${(p.zones||[]).length} zonas</div><div class="row" style="margin-top:8px"><button data-e="${p.id}">Editar</button><button data-l="${p.id}">Copiar enlace cliente</button><button data-v="${p.id}">Ver</button></div></div>`).join(''):'<p class="muted">Aún no hay propiedades. Crea la primera.</p>');
+ $('#n').onclick=()=>edit({id:uid(),name:'',desc:'',fov:65,zones:[]});
+ app.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>edit(JSON.parse(JSON.stringify(props.find(p=>p.id==b.dataset.e)))));
+ app.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>viewer(b.dataset.v));
+ app.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const u=link(b.dataset.l);navigator.clipboard?.writeText(u).catch(()=>{});b.textContent='¡Copiado!';prompt('Enlace para el cliente:',u)});
+}
+function edit(p){cur=p;
+ app.innerHTML=`<button id="b">← Volver</button><h1>Propiedad</h1>
+ <input id="nm" placeholder="Nombre (ej. Casa Laureles)" value="${E(p.name)}">
+ <textarea id="ds" rows="4" placeholder="Descripción breve: precio, área, habitaciones… (se muestra antes del recorrido)">${E(p.desc)}</textarea>
+ <label class="muted">Ángulo de la cámara (grados): normalmente 65; con gran angular 0.5x, unos 100</label>
+ <input id="fv" type="number" min="60" max="120" value="${p.fov}">
+ <h2>Zonas</h2><div id="zs"></div><button id="az">＋ Agregar zona</button>
+ <div class="row" style="margin-top:16px"><button class="p" id="sv">Guardar</button><button class="d" id="dl">Eliminar propiedad</button></div>`;
+ const zs=$('#zs');
+ const draw=()=>{zs.innerHTML='';p.zones.forEach((z,i)=>{const d=document.createElement('div');d.className='card';
+  d.innerHTML=`<input placeholder="Nombre de la zona (Sala, Cocina…)" value="${E(z.name)}"><textarea rows="2" placeholder="Descripción breve de la zona">${E(z.desc)}</textarea><div class="thumbs"></div><div class="row"><button class="p cp">📷 Agregar imágenes</button><button class="d rm">Quitar zona</button></div>`;
+  const [n,t]=d.querySelectorAll('input,textarea');n.oninput=()=>z.name=n.value;t.oninput=()=>z.desc=t.value;
+  d.querySelector('.thumbs').innerHTML=shots(z).map(x=>`<i style="background-image:url(${BU(x.id)})"></i>`).join('');
+  d.querySelector('.cp').onclick=()=>camera(z,draw);
+  d.querySelector('.rm').onclick=()=>{p.zones.splice(i,1);draw()};zs.appendChild(d)})};
+ draw();
+ $('#az').onclick=()=>{p.zones.push({id:uid(),name:'',desc:'',faces:[]});draw()};
+ $('#b').onclick=home;
+ $('#sv').onclick=async()=>{p.name=$('#nm').value;p.desc=$('#ds').value;p.fov=+$('#fv').value||65;
+  try{await db.collection('props').doc(p.id).set(p);home()}catch(e){alert('Error al guardar: '+(e.message||e.code))}};
+ $('#dl').onclick=async()=>{if(confirm('¿Eliminar esta propiedad?')){try{await db.collection('props').doc(p.id).delete()}catch(e){}home()}};
+}
+function pick(cb){const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>i.files[0]&&cb(i.files[0]);i.click()}
+function shrink(f){return new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const s=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.toBlob(b=>b?ok(b):no(new Error('imagen')),'image/jpeg',.85)};im.onerror=()=>no(new Error('imagen'));im.src=URL.createObjectURL(f)})}
+
+async function viewer(id){
+ let p=props.find(q=>q.id==id);
+ if(!p){try{const s=await db.collection('props').doc(id).get();if(s.exists)p={id,...s.data()}}catch(e){}}
+ if(!p){app.innerHTML='<h1>Propiedad no encontrada</h1>';return}
+ app.innerHTML=`<h1>${E(p.name)}</h1><p style="white-space:pre-wrap">${E(p.desc)}</p>`+(p.zones||[]).map(z=>`<div class="card"><b>${E(z.name)}</b><div class="muted">${E(z.desc)}</div></div>`).join('')+'<button class="p" id="go">Entrar al recorrido</button>'+(location.hash?'':'<p><button id="b2">← Volver</button></p>');
+ $('#go').onclick=()=>tour(p);const b2=$('#b2');if(b2)b2.onclick=home;
+}
+let R,sc,cam,grp,lon=0,lat=0,fov=75,raf;
+function tour(p){const T=$('#tour');T.hidden=false;
+ if(!R){R=new THREE.WebGLRenderer({antialias:true});T.prepend(R.domElement);sc=new THREE.Scene();cam=new THREE.PerspectiveCamera(75,1,1,2000);
+  let d=null;T.addEventListener('pointerdown',e=>{if(e.target.closest('#bar,#x'))return;d={x:e.clientX,y:e.clientY,a:lon,b:lat}});
+  addEventListener('pointermove',e=>{if(!d)return;lon=d.a-(e.clientX-d.x)*.2;lat=Math.max(-85,Math.min(85,d.b+(e.clientY-d.y)*.2))});
+  addEventListener('pointerup',()=>d=null);
+  T.addEventListener('wheel',e=>{fov=Math.max(35,Math.min(100,fov+e.deltaY*.05))},{passive:true});
+  addEventListener('resize',fit)}
+ fit();const bar=$('#bar');bar.innerHTML='';
+ (p.zones||[]).forEach((z,i)=>{const b=document.createElement('button');b.textContent=z.name||'Zona '+(i+1);b.onclick=()=>{bar.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');load(z,p.fov||90)};bar.appendChild(b)});
+ $('#x').onclick=()=>{T.hidden=true;cancelAnimationFrame(raf)};
+ if(bar.firstChild)bar.firstChild.click();loop();
+}
+function fit(){const T=$('#tour');R.setSize(T.clientWidth,T.clientHeight);cam.aspect=T.clientWidth/T.clientHeight;cam.updateProjectionMatrix()}
+function load(z,f){const c=R.domElement;c.style.opacity=0;if(grp)sc.remove(grp);grp=new THREE.Group();lon=0;lat=0;fov=75;
+ const L=2*400*Math.tan(f*Math.PI/360),S=shots(z);let n=0;
+ S.forEach(q=>new THREE.TextureLoader().load(BU(q.id),t=>{const w=t.image.width,h=t.image.height,m=Math.max(w,h),o=new THREE.Mesh(new THREE.PlaneGeometry(L*w/m,L*h/m),new THREE.MeshBasicMaterial({map:t})),a=q.yaw*Math.PI/180,b=q.pitch*Math.PI/180;
+  o.position.set(Math.sin(a)*Math.cos(b)*400,Math.sin(b)*400,-Math.cos(a)*Math.cos(b)*400);o.up.set(0,1,0);if(Math.abs(q.pitch)>75)o.up.set(Math.sin(a),0,-Math.cos(a));o.lookAt(0,0,0);grp.add(o);if(++n>=S.length)c.style.opacity=1}));
+ if(!S.length)c.style.opacity=1;sc.add(grp)}
+function loop(){raf=requestAnimationFrame(loop);const a=lon*Math.PI/180,b=lat*Math.PI/180;
+ cam.fov=fov;cam.updateProjectionMatrix();cam.lookAt(Math.sin(a)*Math.cos(b),Math.sin(b),-Math.cos(a)*Math.cos(b));R.render(sc,cam)}
+const shots=z=>z.shots||(z.faces||[]).map((id,k)=>({id,yaw:[0,90,180,270,0,0][k],pitch:[0,0,0,0,90,-90][k]})).filter(q=>q.id);
+const TG=[[0,0],[60,0],[120,0],[180,0],[240,0],[300,0],[0,80],[0,-80]],wrap=a=>((a%360+540)%360)-180,RD=Math.PI/180;
+async function camera(z,done){
+ if(!assets){alert('Subir imágenes no está disponible en esta vista');return}
+ const ov=document.createElement('div');ov.id='cam';
+ ov.innerHTML='<video playsinline muted autoplay></video><div id="ret"></div><div id="msg"></div><div id="cb"><button id="cx">Cancelar</button><button id="sh"></button><button id="ok">Listo</button></div>';
+ document.body.appendChild(ov);
+ const v=ov.querySelector('video'),msg=ov.querySelector('#msg'),ret=ov.querySelector('#ret'),dots=TG.map(()=>{const e=document.createElement('div');ov.insertBefore(e,ret);return e});
+ let st=null,base=null,yaw=0,pit=0,sens=false,got=[],hold=0,busy=false;const t0=Date.now();
+ const say=()=>{const t=TG[got.length];msg.textContent=t?`Foto ${got.length+1} de ${TG.length}: `+(t[1]>60?'apunta al techo':t[1]<-60?'apunta al piso':got.length?'gira a la derecha hasta el círculo':'apunta al frente')+(sens?'. Alinea el círculo blanco.':''):'¡Listo!'};
+ const stop=()=>{removeEventListener('deviceorientation',ori);st&&st.getTracks().forEach(x=>x.stop());ov.remove()};
+ const fin=()=>{if(got.length){z.shots=got;delete z.faces}stop();done()};
+ function ori(e){if(e.alpha==null)return;if(!sens){sens=true;say()}
+  const a=e.alpha*RD,b=e.beta*RD,g=e.gamma*RD,x=-Math.sin(g)*Math.cos(a)-Math.cos(g)*Math.sin(b)*Math.sin(a),y=-Math.sin(g)*Math.sin(a)+Math.cos(g)*Math.sin(b)*Math.cos(a),w=-Math.cos(g)*Math.cos(b);
+  yaw=Math.atan2(x,y)/RD;pit=Math.asin(Math.max(-1,Math.min(1,w)))/RD;if(base===null)base=yaw;tick()}
+ function tick(){const rel=wrap(yaw-base),k=innerWidth/60,W=innerWidth,H=innerHeight;let dd=999;
+  TG.forEach((t,i)=>{const e=dots[i],dy=wrap(t[0]-rel),dp=pit-t[1],nx=i==got.length;let x=W/2+dy*k,y=H/2+dp*k;
+   if(nx)dd=Math.abs(t[1])>60?Math.abs(dp):Math.hypot(dy,dp);
+   e.textContent=i<got.length?'✓':'';e.style.rotate='0rad';
+   if(nx&&(x<40||x>W-40||y<100||y>H-120)){const a=Math.atan2(y-H/2,x-W/2),r=Math.min(W,H)*.35;x=W/2+Math.cos(a)*r;y=H/2+Math.sin(a)*r;e.textContent='➤';e.style.rotate=a+'rad'}
+   e.style.left=x+'px';e.style.top=y+'px';e.className='dt'+(i<got.length?' done':'')+(nx?' nx':'')});
+  ret.className=dd<7?'ok':'';
+  if(dd<7&&Date.now()-t0>2500){if(!hold)hold=Date.now();else if(Date.now()-hold>700)cap()}else hold=0}
+ async function cap(){if(busy||got.length>=TG.length)return;busy=true;hold=0;const i=got.length,t=TG[i];
+  try{let blob;
+   if(st){const c=document.createElement('canvas'),s=Math.min(1,1600/Math.max(v.videoWidth,v.videoHeight));c.width=v.videoWidth*s;c.height=v.videoHeight*s;c.getContext('2d').drawImage(v,0,0,c.width,c.height);blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.88))}
+   else blob=await new Promise((ok,no)=>{const f=$('#fi');f.value='';f.onchange=()=>f.files[0]?shrink(f.files[0]).then(ok,no):no(new Error('cancelado'));f.click()});
+   msg.textContent='Guardando…';const r=await assets.upload(blob),real=sens&&st&&Math.abs(t[1])<60;
+   got.push({id:r.id,yaw:real?wrap(yaw-base):t[0],pitch:sens&&st?Math.max(-85,Math.min(85,pit)):t[1]});
+   ov.style.background='#fff';setTimeout(()=>ov.style.background='#000',120);
+   if(got.length>=TG.length){fin();return}say()}catch(e){if(e.message!='cancelado')alert('No se pudo guardar: '+(e.message||e.code));say()}
+  busy=false}
+ ov.querySelector('#sh').onclick=cap;ov.querySelector('#ok').onclick=fin;ov.querySelector('#cx').onclick=()=>{got=[];stop()};
+ try{if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission)DeviceOrientationEvent.requestPermission().catch(()=>{})}catch(e){}
+ addEventListener('deviceorientation',ori);say();
+ try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},audio:false});v.srcObject=st}catch(e){msg.textContent='Cámara en vivo no disponible aquí: usa el botón redondo para tomar cada foto con la cámara del celular, siguiendo el orden.'}
+ setTimeout(()=>{if(!sens&&st)msg.textContent='Sin sensor de movimiento: toma las fotos con el botón redondo en el orden indicado.'},2000);
+}
+init();
+</script></body></html>
