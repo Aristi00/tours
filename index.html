@@ -23,7 +23,7 @@ input,textarea,select{font:inherit;width:100%;padding:8px;border:1px solid var(-
 #cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #ret{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px;border:3px solid #fff;border-radius:50%;transition:.2s}
 #ret.ok{border-color:#3ec99f;transform:scale(1.25)}
-.dt{position:absolute;width:56px;height:56px;margin:-28px;border-radius:50%;border:3px solid #fff8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;transition:left .1s linear,top .1s linear}
+.dt{position:absolute;width:56px;height:56px;margin:-28px;border-radius:50%;border:3px solid #fff8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px}
 .dt.done{background:#ff8a1f;border-color:#ff8a1f}.dt.nx{border-color:#fff;width:84px;height:84px;margin:-42px;animation:pu 1s infinite}
 #msg{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:12px;right:12px;text-align:center;color:#fff;background:#0009;padding:8px;border-radius:10px;font-size:14px}
 #cb{position:absolute;left:0;right:0;bottom:0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center}
@@ -123,7 +123,7 @@ function tour(p){const T=$('#tour');T.hidden=false;
 function fit(){const T=$('#tour');R.setSize(T.clientWidth,T.clientHeight);cam.aspect=T.clientWidth/T.clientHeight;cam.updateProjectionMatrix()}
 function load(z,f){const c=R.domElement;c.style.opacity=0;if(grp)sc.remove(grp);grp=new THREE.Group();lon=0;lat=0;fov=75;
  const L=2*400*Math.tan(f*Math.PI/360),S=shots(z);let n=0;
- S.forEach(q=>new THREE.TextureLoader().load(BU(q.id),t=>{const w=t.image.width,h=t.image.height,m=Math.max(w,h),o=new THREE.Mesh(new THREE.PlaneGeometry(L*w/m,L*h/m),new THREE.MeshBasicMaterial({map:t,alphaMap:FE(),transparent:true,depthWrite:false})),a=q.yaw*Math.PI/180,b=q.pitch*Math.PI/180;
+ S.forEach(q=>new THREE.TextureLoader().load(BU(q.id),t=>{const w=t.image.width,h=t.image.height,m=Math.max(w,h),o=new THREE.Mesh(new THREE.PlaneGeometry(L*w/m,L*h/m),new THREE.MeshBasicMaterial({map:t})),a=q.yaw*Math.PI/180,b=q.pitch*Math.PI/180;
   o.position.set(Math.sin(a)*Math.cos(b)*400,Math.sin(b)*400,-Math.cos(a)*Math.cos(b)*400);o.up.set(0,1,0);if(Math.abs(q.pitch)>75)o.up.set(Math.sin(a),0,-Math.cos(a));o.lookAt(0,0,0);o.renderOrder=n;grp.add(o);if(++n>=S.length)c.style.opacity=1}));
  if(!S.length)c.style.opacity=1;sc.add(grp)}
 function loop(){raf=requestAnimationFrame(loop);const a=lon*Math.PI/180,b=lat*Math.PI/180;
@@ -151,22 +151,22 @@ async function camera(z,done){
  document.body.appendChild(ov);
  const v=ov.querySelector('video'),msg=ov.querySelector('#msg'),ret=ov.querySelector('#ret'),dots=TG.map(()=>{const e=document.createElement('div');ov.insertBefore(e,ret);return e});
  let st=null,base=null,yaw=0,pit=0,sens=false,got=[],hold=0,busy=false;const t0=Date.now();
- const say=()=>{const t=TG[got.length];msg.textContent=t?`Foto ${got.length+1} de ${TG.length}: `+(t[1]>80?'apunta al techo':t[1]<-80?'apunta al piso':got.length?'sigue el círculo':'apunta al frente')+(sens?'. Alinea el círculo blanco.':''):'¡Listo!'};
+ const say=()=>{const t=TG[got.length];msg.textContent=t?`Foto ${got.length+1} de ${TG.length}: `+(t[1]>80?'apunta al techo':t[1]<-80?'apunta al piso':got.length?'sigue el círculo':'apunta al frente')+(sens?'. Alinea el círculo blanco.':'')+' · Celular en horizontal':'¡Listo!'};
  const stop=()=>{removeEventListener('deviceorientation',ori);st&&st.getTracks().forEach(x=>x.stop());ov.remove()};
  const fin=()=>{if(got.length){z.shots=got;delete z.faces}stop();done()};
  function ori(e){if(e.alpha==null)return;if(!sens){sens=true;say()}
   const a=e.alpha*RD,b=e.beta*RD,g=e.gamma*RD,x=-Math.sin(g)*Math.cos(a)-Math.cos(g)*Math.sin(b)*Math.sin(a),y=-Math.sin(g)*Math.sin(a)+Math.cos(g)*Math.sin(b)*Math.cos(a),w=-Math.cos(g)*Math.cos(b);
-  yaw=Math.atan2(x,y)/RD;pit=Math.asin(Math.max(-1,Math.min(1,w)))/RD;if(base===null)base=yaw;tick()}
+  const ry=Math.atan2(x,y)/RD,rp=Math.asin(Math.max(-1,Math.min(1,w)))/RD;if(base===null){base=ry;yaw=ry;pit=rp}yaw+=wrap(ry-yaw)*.18;pit+=(rp-pit)*.18;tick()}
  function tick(){const rel=wrap(yaw-base),k=innerWidth/60,W=innerWidth,H=innerHeight;let dd=999;
   TG.forEach((t,i)=>{const e=dots[i],cs=Math.abs(t[1])>80?0:Math.cos((pit+t[1])/2*RD),dy=wrap(t[0]-rel)*cs,dp=pit-t[1],nx=i==got.length;let x=W/2+dy*k,y=H/2+dp*k;
    if(nx)dd=Math.abs(t[1])>80?Math.abs(dp):Math.hypot(dy,dp);
    e.textContent=i<got.length?'✓':'';e.style.rotate='0rad';
    if(nx&&(x<40||x>W-40||y<100||y>H-120)){const a=Math.atan2(y-H/2,x-W/2),r=Math.min(W,H)*.35;x=W/2+Math.cos(a)*r;y=H/2+Math.sin(a)*r;e.textContent='➤';e.style.rotate=a+'rad'}
-   e.style.left=x+'px';e.style.top=y+'px';e.className='dt'+(i<got.length?' done':'')+(nx?' nx':'')});
+   e.style.left=Math.round(x)+'px';e.style.top=Math.round(y)+'px';e.className='dt'+(i<got.length?' done':'')+(nx?' nx':'')});
   ret.className=dd<7?'ok':'';
   if(dd<7&&Date.now()-t0>2500){if(!hold)hold=Date.now();else if(Date.now()-hold>700)cap()}else hold=0}
  async function cap(){if(busy||got.length>=TG.length)return;busy=true;hold=0;const i=got.length,t=TG[i];
-  try{let blob;
+  try{let blob;if(st&&v.videoHeight>v.videoWidth){msg.textContent='Pon el celular en HORIZONTAL y espera';busy=false;hold=Date.now()+2000;return}
    if(st){const c=document.createElement('canvas'),s=Math.min(1,1600/Math.max(v.videoWidth,v.videoHeight));c.width=v.videoWidth*s;c.height=v.videoHeight*s;c.getContext('2d').drawImage(v,0,0,c.width,c.height);blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.88))}
    else blob=await new Promise((ok,no)=>{const f=$('#fi');f.value='';f.onchange=()=>f.files[0]?shrink(f.files[0]).then(ok,no):no(new Error('cancelado'));f.click()});
    msg.textContent='Guardando…';const r=await assets.upload(blob),real=sens&&st&&Math.abs(t[1])<80;
